@@ -73,18 +73,38 @@ far title
 bla'
 }
 function addtocmarkers {
-	sed '
-	/\.NH\|\.SH.*$/{												#find .NH and .SH lines
-	  	N															#add the next $line to the pattern space
-	  	s/\(\.NH[^\n]*\n\|\.SH[^\n]*\n\)\(.*\)$/\1\2\n.XS\n\2\n.XE/	#  replace 	|.NH stuff
-																	#		 	|$line
-																	# ==============================
-																	#  by 		|.NH stuff
-																	#			|$line
-																	#			|.XS
-																	#			|$line
-																	#			|.XE
-	}' 
+	awk '
+	BEGIN {
+		def = 0
+		header = 0
+		acc = ""
+	}
+	{
+		if (match($0, /^\.de.*/)) {
+			def = 1
+		} else if (match($0, /^\.\..*/)) {
+			def = 0
+		}
+		if (def == 0) {
+			if (match($0, /^\.NH.*|^\.SH.*/)) {
+				if (header == 0)
+					acc = acc ".XS\n"
+				else
+					acc = acc ".XA\n"
+				header = 1
+			}
+			if (match($0, /^[^.].*/) && header == 1) {
+				acc = acc $0 "\n"
+			}
+			if ((match($0, /^\..P.*/)!= 0 || match($0, /^\.bp.*/) !=0) && header == 1) {
+				acc = acc ".XE"
+				print acc
+				acc = ""
+				header = 0
+			}
+		}
+		print
+	}'
 }
 function maketoc {
 	source_file=$1
@@ -111,6 +131,7 @@ dir="$(dirname "$path")/"	# directory only (with trailing /)
 file="${path#"$dir"}"		# filename 
 base="${file%.*}"			# file without extension
 extension=${file#"$base."}	# extension
+target_extension='ps'
 
 cd "$dir" || exit
 builddir="$dir/.build/$file/"		# build directory
@@ -119,8 +140,8 @@ source_file="$path"
 source_file_short="$file"
 header_file="$builddir$base.header.$extension"
 header_file_short="$base.header.$extension"
-target_file="$dir$base.pdf"
-target_file_short="$base.pdf"
+target_file="$dir$base.$target_extension"
+target_file_short="$base.$target_extension"
 
 marked="$builddir"'marked'
 pretoc="$builddir"'pretoc'
@@ -128,6 +149,7 @@ nb="$builddir"'nb'
 toc="$builddir"'toc'
 
 # Add toc markers for title referencing from sourcefile to marked
+#cat "$source_file" | addtocmarkers 
 cat "$source_file" | addtocmarkers > "$marked"
 
 # extract the toc structure from marked into pretoc
@@ -151,7 +173,7 @@ cat "$marked" \
 cat "$marked" \
 	| sed -e "/\(\.PX *.*\|\.TC *.*\)/ {r $pretoc" -e 'N};$ a .TC' \
 	| refer -PS -e \
-	| groff -e -ms -kepjt -T ps \
+	| groff -e -ms -kepjt -U -T ps \
 	| sed -n 's/.*(\.\+ \([0-9]\+\)).*/\1/p' \
 	> "$nb"
 # get only the useful numbers (aka from the 2*lines/3 to lines)
@@ -162,10 +184,9 @@ maketoc "$pretoc" $numbers > "$toc"
 cat "$marked" \
 	| sed -e "/\(\.PX *.*\|\.TC *.*\)/ {r $toc" -e 'N}' \
 	| refer -PS -e \
-	| groff -e -ms -kepjt -T pdf \
+	| groff -e -ms -kepjt -U -T $target_extension \
 	> "$target_file"
 #TODO: remove the useless TOC markers
 #TODO: remove the build files
 #TODO: Fix .TC marker glitch about 'shift count out of range' 
 #	source: probably due to page numbering becoming roman numbers after .TC marker...
-
