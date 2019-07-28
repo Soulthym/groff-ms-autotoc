@@ -174,7 +174,11 @@ cat "$marked" \
 	| sed -e "/\(\.PX *.*\|\.TC *.*\)/ {r $pretoc" -e 'N};$ a .TC' \
 	| refer -PS -e \
 	| groff -e -ms -kepjt -U -T ps \
-	| sed -n 's/.*(\.\+ \([0-9]\+\)).*/\1/p' \
+	| awk -vRS=")" -vFS="(" '{print $2}' \
+	| tr -d '\n' \
+	| sed 's/\.\{9\} \([0-9]\+\)/\\TOCGOTCHA(\1)/g' \
+	| sed 's/\\TOCGOTCHA/\n\\TOCGOTCHA/g' \
+	| awk -vRS=")" -vFS="(" '/\\TOCGOTCHA/{print $2}'\
 	> "$nb"
 # get only the useful numbers (aka from the 2*lines/3 to lines)
 numbers=$(tail -n$(echo "$(cat "$nb" | wc -l)/3" | bc) "$nb")
